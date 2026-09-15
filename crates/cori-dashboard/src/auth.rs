@@ -240,7 +240,7 @@ fn login_page_template(redirect: Option<&str>, error: Option<&str>) -> String {
             <div class="inline-flex items-center justify-center h-12 mb-4">
                 <img src="https://assets.cori.do/cori-logo-white.png" alt="Cori" class="h-12">
             </div>
-            <p class="text-primary-200 dark:text-gray-400">The Secure Kernel for AI</p>
+            <p class="text-primary-200 dark:text-gray-400">Governed data for AI agents</p>
         </div>
 
         <!-- Login Card -->

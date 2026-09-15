@@ -1,6 +1,6 @@
 # Cori Configuration Schemas
 
-This folder contains JSON Schema definitions for validating Cori's YAML configuration files. These schemas define the structure and constraints for all configuration types used by the Cori Secure Kernel for AI.
+This folder contains JSON Schema definitions for validating Cori's YAML configuration files. These schemas define the structure and constraints for all configuration types used by Cori Store.
 
 ## Schema Overview
 

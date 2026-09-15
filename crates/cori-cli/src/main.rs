@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 mod commands;
 
 #[derive(Parser, Debug)]
-#[command(name = "cori", version, about = "Cori CLI - The Secure Kernel for AI")]
+#[command(name = "cori", version, about = "Cori Store CLI - governed Postgres data for AI agents")]
 struct Cli {
     #[command(subcommand)]
     cmd: Command,

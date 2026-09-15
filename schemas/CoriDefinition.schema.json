@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://cori.do/schemas/CoriDefinition.schema.json",
   "title": "CoriDefinition",
-  "description": "Main configuration file (cori.yaml) for Cori - The Secure Kernel for AI. Defines database connection, Biscuit tokens, MCP server, dashboard, and audit logging. Tenancy rules are defined in schema/rules.yaml, roles in roles/*.yaml (convention over configuration).",
+  "description": "Main configuration file (cori.yaml) for a Cori Store. Defines database connection, Biscuit tokens, MCP server, dashboard, and audit logging. Tenancy rules are defined in schema/rules.yaml, roles in roles/*.yaml (convention over configuration).",
   "type": "object",
   "properties": {
     "project": {
