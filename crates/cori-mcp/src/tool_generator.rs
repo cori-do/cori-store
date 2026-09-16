@@ -151,8 +151,8 @@ impl ToolGenerator {
         ToolDefinition {
             name: format!("get{}", entity_name),
             description: Some(format!(
-                "Retrieve a {} by primary key ({})",
-                table_name, pk_desc
+                "Retrieve one {} by primary key ({})",
+                singularize(table_name), pk_desc
             )),
             input_schema: json!({
                 "type": "object",
@@ -201,7 +201,7 @@ impl ToolGenerator {
             name: format!("list{}", pluralize(entity_name)),
             description: Some(format!(
                 "List {} with optional filters",
-                pluralize(table_name)
+                table_name
             )),
             input_schema: json!({
                 "type": "object",
@@ -229,7 +229,7 @@ impl ToolGenerator {
 
         ToolDefinition {
             name: format!("create{}", entity_name),
-            description: Some(format!("Create a new {}", table_name)),
+            description: Some(format!("Create a new {}", singularize(table_name))),
             input_schema: json!({
                 "type": "object",
                 "properties": properties,
@@ -284,7 +284,7 @@ impl ToolGenerator {
             name: format!("update{}", entity_name),
             description: Some(format!(
                 "Update an existing {} by primary key ({})",
-                table_name, pk_desc
+                singularize(table_name), pk_desc
             )),
             input_schema: json!({
                 "type": "object",
@@ -358,8 +358,8 @@ impl ToolGenerator {
         ToolDefinition {
             name: format!("delete{}", entity_name),
             description: Some(format!(
-                "Delete a {} by primary key ({})",
-                table_name, pk_desc
+                "Delete one {} by primary key ({})",
+                singularize(table_name), pk_desc
             )),
             input_schema: json!({
                 "type": "object",

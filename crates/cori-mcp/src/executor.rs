@@ -348,11 +348,7 @@ impl ToolExecutor {
         // Add tenant condition if applicable
         let tenant_column = self.tenant_column_for_table(table);
         let tenant_condition = tenant_column.as_ref().map(|tc| {
-            if context.tenant_id.parse::<i64>().is_ok() {
-                format!("{} = {}", tc, context.tenant_id)
-            } else {
-                format!("{} = '{}'", tc, context.tenant_id.replace("'", "''"))
-            }
+            format!("{} = {}", tc, sql_string_literal(&context.tenant_id))
         });
 
         let query = if let Some(tc) = tenant_condition {
@@ -396,21 +392,10 @@ impl ToolExecutor {
 
         let query = if let Some(tc) = &tenant_column {
             // With tenant scoping
-            if tenant_id.parse::<i64>().is_ok() {
-                format!(
-                    "SELECT * FROM {} WHERE {} = {} AND {} = {}",
-                    table, pk_column, pk_value, tc, tenant_id
-                )
-            } else {
-                format!(
-                    "SELECT * FROM {} WHERE {} = {} AND {} = '{}'",
-                    table,
-                    pk_column,
-                    pk_value,
-                    tc,
-                    tenant_id.replace("'", "''")
-                )
-            }
+            format!(
+                "SELECT * FROM {} WHERE {} = {} AND {} = {}",
+                table, pk_column, pk_value, tc, sql_string_literal(tenant_id)
+            )
         } else {
             format!("SELECT * FROM {} WHERE {} = {}", table, pk_column, pk_value)
         };
@@ -1020,11 +1005,7 @@ impl ToolExecutor {
 
         // Build optional tenant condition - embed directly since it comes from trusted token
         let tenant_condition = tenant_column.as_ref().map(|tc| {
-            if context.tenant_id.parse::<i64>().is_ok() {
-                format!("{} = {}", tc, context.tenant_id)
-            } else {
-                format!("{} = '{}'", tc, context.tenant_id.replace("'", "''"))
-            }
+            format!("{} = {}", tc, sql_string_literal(&context.tenant_id))
         });
 
         let query = if let Some(tc) = tenant_condition {
@@ -1127,31 +1108,41 @@ impl ToolExecutor {
         // Tenant ID comes from the trusted token, so we can safely embed it.
         let mut conditions: Vec<String> = Vec::new();
         if let Some(tc) = &tenant_column {
-            let tenant_condition = if context.tenant_id.parse::<i64>().is_ok() {
-                format!("{} = {}", tc, context.tenant_id)
-            } else {
-                format!("{} = '{}'", tc, context.tenant_id.replace("'", "''"))
-            };
+            let tenant_condition = format!("{} = {}", tc, sql_string_literal(&context.tenant_id));
             conditions.push(tenant_condition);
         }
 
-        // Add user-provided filter conditions
+        // Add user-provided filter conditions: equality on columns the role can read, nothing else. An unreadable
+        // column would leak its values one guess at a time; an unknown key or a non-scalar value is an error rather
+        // than a filter silently dropped.
+        let filterable = self.filterable_columns(table);
         let empty_map = serde_json::Map::new();
         let args_map = arguments.as_object().unwrap_or(&empty_map);
         for (key, value) in args_map {
-            if key == "limit" || key == "offset" {
+            if key == "limit" || key == "offset" || key == "dryRun" {
                 continue;
             }
-            // Validate column name (alphanumeric and underscore only)
-            if !key.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                continue;
+            if !filterable.iter().any(|c| c == key) {
+                return ExecutionResult::error(format!(
+                    "Unknown filter '{}' for {}: filter by one of the readable columns {:?} (equality only), plus limit and offset",
+                    key, table, filterable
+                ));
             }
             if let Some(s) = value.as_str() {
-                conditions.push(format!("{} = '{}'", key, s.replace("'", "''")));
+                conditions.push(format!("\"{}\" = {}", key, sql_string_literal(s)));
             } else if let Some(n) = value.as_i64() {
-                conditions.push(format!("{} = {}", key, n));
+                conditions.push(format!("\"{}\" = {}", key, n));
+            } else if let Some(f) = value.as_f64() {
+                conditions.push(format!("\"{}\" = {}", key, f));
             } else if let Some(b) = value.as_bool() {
-                conditions.push(format!("{} = {}", key, b));
+                conditions.push(format!("\"{}\" = {}", key, b));
+            } else if value.is_null() {
+                conditions.push(format!("\"{}\" IS NULL", key));
+            } else {
+                return ExecutionResult::error(format!(
+                    "Filter '{}' must be a string, number, boolean or null (equality only)",
+                    key
+                ));
             }
         }
 
@@ -1190,6 +1181,22 @@ impl ToolExecutor {
             }
             Err(e) => ExecutionResult::error(format!("Database error: {}", e)),
         }
+    }
+
+    /// Columns a list may filter on: the role's readable columns (all schema columns when the role reads every column).
+    fn filterable_columns(&self, table: &str) -> Vec<String> {
+        let listed = self.get_readable_columns(table);
+        if !listed.is_empty() {
+            return listed;
+        }
+        if !self.role.can_read(table) {
+            return Vec::new();
+        }
+        self.schema
+            .as_ref()
+            .and_then(|s| s.get_table(table))
+            .map(|t| t.columns.iter().map(|c| c.name.clone()).collect())
+            .unwrap_or_default()
     }
 
     /// Get readable columns for a table from role.
@@ -1319,11 +1326,7 @@ impl ToolExecutor {
 
             // Add tenant condition for the referenced table
             if let Some(tc) = &ref_tenant_col {
-                let tenant_literal = if context.tenant_id.parse::<i64>().is_ok() {
-                    context.tenant_id.clone()
-                } else {
-                    format!("'{}'", context.tenant_id.replace("'", "''"))
-                };
+                let tenant_literal = sql_string_literal(&context.tenant_id);
                 conditions.push(format!("{} = {}", tc, tenant_literal));
             }
 
@@ -1400,11 +1403,7 @@ impl ToolExecutor {
         let mut value_strs: Vec<String> = Vec::new();
         if let Some(tc) = &tenant_column {
             columns.push(tc.clone());
-            let tenant_value = if context.tenant_id.parse::<i64>().is_ok() {
-                context.tenant_id.clone()
-            } else {
-                format!("'{}'", context.tenant_id.replace("'", "''"))
-            };
+            let tenant_value = sql_string_literal(&context.tenant_id);
             value_strs.push(tenant_value);
         }
 
@@ -1604,11 +1603,7 @@ impl ToolExecutor {
 
         // Build optional tenant condition - embed directly since it comes from trusted token
         let tenant_condition = tenant_column.as_ref().map(|tc| {
-            if context.tenant_id.parse::<i64>().is_ok() {
-                format!("{} = {}", tc, context.tenant_id)
-            } else {
-                format!("{} = '{}'", tc, context.tenant_id.replace("'", "''"))
-            }
+            format!("{} = {}", tc, sql_string_literal(&context.tenant_id))
         });
 
         // Capture before state for audit (using first PK value)
@@ -1748,11 +1743,7 @@ impl ToolExecutor {
 
         // Build optional tenant condition - embed directly since it comes from trusted token
         let tenant_condition = tenant_column.as_ref().map(|tc| {
-            if context.tenant_id.parse::<i64>().is_ok() {
-                format!("{} = {}", tc, context.tenant_id)
-            } else {
-                format!("{} = '{}'", tc, context.tenant_id.replace("'", "''"))
-            }
+            format!("{} = {}", tc, sql_string_literal(&context.tenant_id))
         });
 
         // Capture before state for audit (using first PK value)
@@ -2057,4 +2048,10 @@ mod tests {
             ToolOperation::Create { table } if table == "ticket"
         );
     }
+}
+
+/// A tenant id as a SQL string literal. Always quoted: an untyped literal coerces to an integer tenant column, and a
+/// numeric-looking id (a user sub such as "42") must still compare against a text column.
+fn sql_string_literal(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
 }
